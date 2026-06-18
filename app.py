@@ -413,15 +413,16 @@ def predict_phase(model, encoder, scores):
     }).sort_values("Probability", ascending=False)
 
     return result
-
- # =====================================================
-# PHASE DURATION INTELLIGENCE - SIMPLE SAFE VERSION
-# =====================================================
 winner = prediction.iloc[0]
 runner = prediction.iloc[1]
 
 current_phase = winner["Phase"]
 confidence = winner["Probability"]
+
+ # =====================================================
+# PHASE DURATION INTELLIGENCE - SIMPLE SAFE VERSION
+# =====================================================
+
 next_phase_map = {
     "Accumulation": "Early Bull",
     "Early Bull": "Mature Bull",
