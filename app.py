@@ -527,17 +527,6 @@ remaining_current_duration = max(
     avg_current_duration - current_phase_months,
     0
 )
-    X_live = pd.DataFrame([scores], columns=FEATURES)
-    probabilities = model.predict_proba(X_live)[0]
-    classes = encoder.inverse_transform(np.arange(len(probabilities)))
-
-    result = pd.DataFrame({
-        "Phase": classes,
-        "Probability": probabilities * 100,
-    }).sort_values("Probability", ascending=False)
-
-    return result
-
 
 # =====================================================
 # HEADER
