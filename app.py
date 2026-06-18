@@ -413,121 +413,83 @@ def predict_phase(model, encoder, scores):
     }).sort_values("Probability", ascending=False)
 
     return result
-# =====================================================
-# PHASE DURATION INTELLIGENCE
-# =====================================================
-# =====================================================
-# PHASE DURATION INTELLIGENCE - SAFE VERSION
-# =====================================================
-feature_cols = ["Trend", "Breadth", "Liquidity", "Valuation", "Sentiment", "Macro"]
 
-phase_history = pd.DataFrame()
+ # =====================================================
+# PHASE DURATION INTELLIGENCE - SIMPLE SAFE VERSION
+# =====================================================
+next_phase_map = {
+    "Accumulation": "Early Bull",
+    "Early Bull": "Mature Bull",
+    "Mature Bull": "Late Bull",
+    "Late Bull": "Distribution",
+    "Distribution": "Early Bear",
+    "Early Bear": "Mature Bear",
+    "Mature Bear": "Late Bear",
+    "Late Bear": "Accumulation",
+}
+
+next_probable_phase = next_phase_map.get(current_phase, "Unknown")
 
 try:
-    phase_rows = []
+    phase_history_rows = []
 
-    usable_history = history_df.copy()
+    for date, row in history_df[["Trend", "Breadth", "Liquidity", "Valuation", "Sentiment", "Macro"]].dropna().iterrows():
+        hist_scores = row.to_dict()
+        hist_pred = predict_phase(model, encoder, hist_scores)
+        hist_phase = hist_pred.iloc[0]["Phase"]
 
-    missing_cols = [col for col in feature_cols if col not in usable_history.columns]
-
-    if missing_cols:
-        raise ValueError(f"Missing feature columns in history_df: {missing_cols}")
-
-    usable_history = usable_history[feature_cols].dropna()
-
-    for date, row in usable_history.iterrows():
-        X_hist = pd.DataFrame([row.to_dict()], columns=feature_cols)
-        probs = model.predict_proba(X_hist)[0]
-        classes = encoder.inverse_transform(np.arange(len(probs)))
-        phase = classes[np.argmax(probs)]
-
-        phase_rows.append({
+        phase_history_rows.append({
             "Date": date,
-            "Phase": phase
+            "Phase": hist_phase
         })
 
-    phase_history = pd.DataFrame(phase_rows)
+    phase_history = pd.DataFrame(phase_history_rows)
 
-    if phase_history.empty:
-        raise ValueError("Phase history is empty.")
+    same_phase = phase_history["Phase"] == current_phase
+    last_break = same_phase[::-1].idxmin() if (~same_phase).any() else phase_history.index[0]
 
-    latest_phase = phase_history["Phase"].iloc[-1]
-
-    last_different = phase_history[
-        phase_history["Phase"] != latest_phase
-    ].tail(1)
-
-    if last_different.empty:
-        phase_start_date = phase_history["Date"].iloc[0]
+    if (~same_phase).any():
+        phase_start_date = phase_history.loc[last_break + 1, "Date"]
     else:
-        phase_start_position = last_different.index[-1] + 1
-        phase_start_date = phase_history.loc[phase_start_position, "Date"]
+        phase_start_date = phase_history["Date"].iloc[0]
 
-    current_phase_days = (
-        phase_history["Date"].iloc[-1] - phase_start_date
-    ).days
-
+    current_phase_days = (phase_history["Date"].iloc[-1] - phase_start_date).days
     current_phase_months = round(current_phase_days / 30.44, 1)
 
-    phase_blocks = []
-
+    blocks = []
     start_date = phase_history["Date"].iloc[0]
     start_phase = phase_history["Phase"].iloc[0]
 
     for i in range(1, len(phase_history)):
         if phase_history["Phase"].iloc[i] != start_phase:
             end_date = phase_history["Date"].iloc[i - 1]
-            duration_days = (end_date - start_date).days
+            months = (end_date - start_date).days / 30.44
 
-            if duration_days > 5:
-                phase_blocks.append({
+            if months > 0.25:
+                blocks.append({
                     "Phase": start_phase,
-                    "Duration Months": duration_days / 30.44
+                    "Months": months
                 })
 
             start_date = phase_history["Date"].iloc[i]
             start_phase = phase_history["Phase"].iloc[i]
 
-    phase_blocks_df = pd.DataFrame(phase_blocks)
+    blocks_df = pd.DataFrame(blocks)
 
-    if not phase_blocks_df.empty:
-        phase_duration_stats = (
-            phase_blocks_df
-            .groupby("Phase")["Duration Months"]
-            .mean()
-            .to_dict()
-        )
+    if not blocks_df.empty:
+        avg_duration_map = blocks_df.groupby("Phase")["Months"].mean().to_dict()
     else:
-        phase_duration_stats = {}
+        avg_duration_map = {}
 
-    next_phase_map = {
-        "Accumulation": "Early Bull",
-        "Early Bull": "Mature Bull",
-        "Mature Bull": "Late Bull",
-        "Late Bull": "Distribution",
-        "Distribution": "Early Bear",
-        "Early Bear": "Mature Bear",
-        "Mature Bear": "Late Bear",
-        "Late Bear": "Accumulation",
-    }
-
-    next_probable_phase = next_phase_map.get(latest_phase, "Unknown")
-
-    avg_current_duration = phase_duration_stats.get(latest_phase, 6.0)
-    avg_next_duration = phase_duration_stats.get(next_probable_phase, 6.0)
-
-    remaining_current_duration = max(
-        avg_current_duration - current_phase_months,
-        0
-    )
+    avg_current_duration = avg_duration_map.get(current_phase, 6.0)
+    avg_next_duration = avg_duration_map.get(next_probable_phase, 6.0)
+    remaining_current_duration = max(avg_current_duration - current_phase_months, 0)
 
 except Exception:
+    phase_start_date = datetime.now()
     current_phase_months = 0.0
     remaining_current_duration = 0.0
-    phase_start_date = datetime.now()
-    next_probable_phase = "Unknown"
-    avg_next_duration = 6.0
-    
+    avg_next_duration = 6.0   
 
 # =====================================================
 # HEADER
