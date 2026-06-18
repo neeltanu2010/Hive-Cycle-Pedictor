@@ -413,13 +413,61 @@ def predict_phase(model, encoder, scores):
     }).sort_values("Probability", ascending=False)
 
     return result
+
+
+ 
+# =====================================================
+# HEADER
+# =====================================================
+st.markdown("""
+<div class="hero">
+    <h1>🐝 Madness of Money Bees</h1>
+    <h3>20-Year Trained XGBoost Market Cycle Predictor</h3>
+    <p>Automatic live prediction using historical market-trained regime intelligence.</p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# =====================================================
+# SIDEBAR
+# =====================================================
+st.sidebar.title("🐝 Control Room")
+st.sidebar.caption("Automatic live market-cycle prediction.")
+
+if st.sidebar.button("Refresh Live Data"):
+    st.cache_data.clear()
+
+
+# =====================================================
+# LOAD MODEL
+# =====================================================
+model, encoder, model_features, missing = load_model()
+
+if missing:
+    st.error("Model files missing. Run `python train.py` first and commit the generated `.pkl` files.")
+    st.write("Missing files:", missing)
+    st.stop()
+
+
+# =====================================================
+# RUN APP ENGINE
+# =====================================================
+try:
+    scores, details, history_df, nifty = calculate_live_scores()
+except Exception as e:
+    st.error("Could not fetch live market data.")
+    st.exception(e)
+    st.stop()
+
+prediction = predict_phase(model, encoder, scores)
+
 winner = prediction.iloc[0]
 runner = prediction.iloc[1]
 
 current_phase = winner["Phase"]
 confidence = winner["Probability"]
 
- # =====================================================
+# =====================================================
 # PHASE DURATION INTELLIGENCE - SIMPLE SAFE VERSION
 # =====================================================
 
@@ -497,56 +545,6 @@ except Exception:
     remaining_current_duration = 0.0
     avg_next_duration = 6.0   
 
-# =====================================================
-# HEADER
-# =====================================================
-st.markdown("""
-<div class="hero">
-    <h1>🐝 Madness of Money Bees</h1>
-    <h3>20-Year Trained XGBoost Market Cycle Predictor</h3>
-    <p>Automatic live prediction using historical market-trained regime intelligence.</p>
-</div>
-""", unsafe_allow_html=True)
-
-
-# =====================================================
-# SIDEBAR
-# =====================================================
-st.sidebar.title("🐝 Control Room")
-st.sidebar.caption("Automatic live market-cycle prediction.")
-
-if st.sidebar.button("Refresh Live Data"):
-    st.cache_data.clear()
-
-
-# =====================================================
-# LOAD MODEL
-# =====================================================
-model, encoder, model_features, missing = load_model()
-
-if missing:
-    st.error("Model files missing. Run `python train.py` first and commit the generated `.pkl` files.")
-    st.write("Missing files:", missing)
-    st.stop()
-
-
-# =====================================================
-# RUN APP ENGINE
-# =====================================================
-try:
-    scores, details, history_df, nifty = calculate_live_scores()
-except Exception as e:
-    st.error("Could not fetch live market data.")
-    st.exception(e)
-    st.stop()
-
-prediction = predict_phase(model, encoder, scores)
-
-winner = prediction.iloc[0]
-runner = prediction.iloc[1]
-
-current_phase = winner["Phase"]
-confidence = winner["Probability"]
 
 
 # =====================================================
