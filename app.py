@@ -524,7 +524,7 @@ try:
 except Exception:
     current_phase_months = 0.0
     remaining_current_duration = 0.0
-    phase_start_date = history_df.index[-1]
+    phase_start_date = datetime.now()
     next_probable_phase = "Unknown"
     avg_next_duration = 6.0
     
