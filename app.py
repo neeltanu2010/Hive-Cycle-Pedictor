@@ -416,42 +416,35 @@ def predict_phase(model, encoder, scores):
 # =====================================================
 # PHASE DURATION INTELLIGENCE
 # =====================================================
-@st.cache_data(show_spinner=False)
-def build_phase_history(history_df):
-    phase_rows = []
+# =====================================================
+# PHASE DURATION INTELLIGENCE
+# =====================================================
+phase_rows = []
 
-    for date, row in history_df[FEATURES].dropna().iterrows():
-        X_hist = pd.DataFrame([row.to_dict()], columns=FEATURES)
-        probs = model.predict_proba(X_hist)[0]
-        classes = encoder.inverse_transform(np.arange(len(probs)))
-        phase = classes[np.argmax(probs)]
+for date, row in history_df[FEATURES].dropna().iterrows():
+    X_hist = pd.DataFrame([row.to_dict()], columns=FEATURES)
+    probs = model.predict_proba(X_hist)[0]
+    classes = encoder.inverse_transform(np.arange(len(probs)))
+    phase = classes[np.argmax(probs)]
 
-        phase_rows.append({
-            "Date": date,
-            "Phase": phase
-        })
+    phase_rows.append({
+        "Date": date,
+        "Phase": phase
+    })
 
-    return pd.DataFrame(phase_rows)
-
-
-phase_history = build_phase_history(history_df)
+phase_history = pd.DataFrame(phase_rows)
 
 latest_phase = phase_history["Phase"].iloc[-1]
 
-last_change_index = phase_history[
-    phase_history["Phase"] != latest_phase
-].tail(1)
+last_different = phase_history[phase_history["Phase"] != latest_phase].tail(1)
 
-if last_change_index.empty:
+if last_different.empty:
     phase_start_date = phase_history["Date"].iloc[0]
 else:
-    phase_start_position = last_change_index.index[-1] + 1
+    phase_start_position = last_different.index[-1] + 1
     phase_start_date = phase_history.loc[phase_start_position, "Date"]
 
-current_phase_days = (
-    phase_history["Date"].iloc[-1] - phase_start_date
-).days
-
+current_phase_days = (phase_history["Date"].iloc[-1] - phase_start_date).days
 current_phase_months = round(current_phase_days / 30.44, 1)
 
 phase_blocks = []
@@ -467,9 +460,6 @@ for i in range(1, len(phase_history)):
         if duration_days > 5:
             phase_blocks.append({
                 "Phase": start_phase,
-                "Start": start_date,
-                "End": end_date,
-                "Duration Days": duration_days,
                 "Duration Months": duration_days / 30.44
             })
 
@@ -482,13 +472,11 @@ if not phase_blocks_df.empty:
     phase_duration_stats = (
         phase_blocks_df
         .groupby("Phase")["Duration Months"]
-        .agg(["mean", "median", "count"])
-        .reset_index()
+        .mean()
+        .to_dict()
     )
 else:
-    phase_duration_stats = pd.DataFrame(
-        columns=["Phase", "mean", "median", "count"]
-    )
+    phase_duration_stats = {}
 
 next_phase_map = {
     "Accumulation": "Early Bull",
@@ -501,32 +489,12 @@ next_phase_map = {
     "Late Bear": "Accumulation",
 }
 
-next_probable_phase = next_phase_map.get(current_phase, "Unknown")
+next_probable_phase = next_phase_map.get(latest_phase, "Unknown")
 
-current_phase_stats = phase_duration_stats[
-    phase_duration_stats["Phase"] == current_phase
-]
+avg_current_duration = phase_duration_stats.get(latest_phase, 6.0)
+avg_next_duration = phase_duration_stats.get(next_probable_phase, 6.0)
 
-next_phase_stats = phase_duration_stats[
-    phase_duration_stats["Phase"] == next_probable_phase
-]
-
-avg_current_duration = (
-    float(current_phase_stats["mean"].iloc[0])
-    if not current_phase_stats.empty
-    else 6.0
-)
-
-avg_next_duration = (
-    float(next_phase_stats["mean"].iloc[0])
-    if not next_phase_stats.empty
-    else 6.0
-)
-
-remaining_current_duration = max(
-    avg_current_duration - current_phase_months,
-    0
-)
+remaining_current_duration = max(avg_current_duration - current_phase_months, 0)
 
 # =====================================================
 # HEADER
