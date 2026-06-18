@@ -402,7 +402,120 @@ def calculate_live_scores():
 # =====================================================
 # PREDICTION
 # =====================================================
-def predict_phase(model, encoder, scores):
+def predict_phase(model, encoder, # =====================================================
+# PHASE DURATION INTELLIGENCE
+# =====================================================
+@st.cache_data(show_spinner=False)
+def build_phase_history(history_df):
+    phase_rows = []
+
+    for date, row in history_df[FEATURES].dropna().iterrows():
+        X_hist = pd.DataFrame([row.to_dict()], columns=FEATURES)
+        probs = model.predict_proba(X_hist)[0]
+        classes = encoder.inverse_transform(np.arange(len(probs)))
+        phase = classes[np.argmax(probs)]
+
+        phase_rows.append({
+            "Date": date,
+            "Phase": phase
+        })
+
+    return pd.DataFrame(phase_rows)
+
+
+phase_history = build_phase_history(history_df)
+
+latest_phase = phase_history["Phase"].iloc[-1]
+
+last_change_index = phase_history[
+    phase_history["Phase"] != latest_phase
+].tail(1)
+
+if last_change_index.empty:
+    phase_start_date = phase_history["Date"].iloc[0]
+else:
+    phase_start_position = last_change_index.index[-1] + 1
+    phase_start_date = phase_history.loc[phase_start_position, "Date"]
+
+current_phase_days = (
+    phase_history["Date"].iloc[-1] - phase_start_date
+).days
+
+current_phase_months = round(current_phase_days / 30.44, 1)
+
+phase_blocks = []
+
+start_date = phase_history["Date"].iloc[0]
+start_phase = phase_history["Phase"].iloc[0]
+
+for i in range(1, len(phase_history)):
+    if phase_history["Phase"].iloc[i] != start_phase:
+        end_date = phase_history["Date"].iloc[i - 1]
+        duration_days = (end_date - start_date).days
+
+        if duration_days > 5:
+            phase_blocks.append({
+                "Phase": start_phase,
+                "Start": start_date,
+                "End": end_date,
+                "Duration Days": duration_days,
+                "Duration Months": duration_days / 30.44
+            })
+
+        start_date = phase_history["Date"].iloc[i]
+        start_phase = phase_history["Phase"].iloc[i]
+
+phase_blocks_df = pd.DataFrame(phase_blocks)
+
+if not phase_blocks_df.empty:
+    phase_duration_stats = (
+        phase_blocks_df
+        .groupby("Phase")["Duration Months"]
+        .agg(["mean", "median", "count"])
+        .reset_index()
+    )
+else:
+    phase_duration_stats = pd.DataFrame(
+        columns=["Phase", "mean", "median", "count"]
+    )
+
+next_phase_map = {
+    "Accumulation": "Early Bull",
+    "Early Bull": "Mature Bull",
+    "Mature Bull": "Late Bull",
+    "Late Bull": "Distribution",
+    "Distribution": "Early Bear",
+    "Early Bear": "Mature Bear",
+    "Mature Bear": "Late Bear",
+    "Late Bear": "Accumulation",
+}
+
+next_probable_phase = next_phase_map.get(current_phase, "Unknown")
+
+current_phase_stats = phase_duration_stats[
+    phase_duration_stats["Phase"] == current_phase
+]
+
+next_phase_stats = phase_duration_stats[
+    phase_duration_stats["Phase"] == next_probable_phase
+]
+
+avg_current_duration = (
+    float(current_phase_stats["mean"].iloc[0])
+    if not current_phase_stats.empty
+    else 6.0
+)
+
+avg_next_duration = (
+    float(next_phase_stats["mean"].iloc[0])
+    if not next_phase_stats.empty
+    else 6.0
+)
+
+remaining_current_duration = max(
+    avg_current_duration - current_phase_months,
+    0
+)
     X_live = pd.DataFrame([scores], columns=FEATURES)
     probabilities = model.predict_proba(X_live)[0]
     classes = encoder.inverse_transform(np.arange(len(probabilities)))
@@ -507,7 +620,39 @@ Latest market date: {details["Latest Market Date"]}<br>
 Last app refresh: {datetime.now().strftime("%d %b %Y, %I:%M %p")}
 </div>
 """, unsafe_allow_html=True)
+# =====================================================
+# PHASE DURATION UI
+# =====================================================
+st.markdown("## ⏳ Phase Duration Intelligence")
 
+d1, d2, d3 = st.columns(3)
+
+with d1:
+    st.markdown(f"""
+    <div class="card">
+        <p class="small">Current Phase Duration</p>
+        <div class="big-score">{current_phase_months:.1f} months</div>
+        <p class="small">Started around {phase_start_date.strftime("%d %b %Y")}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with d2:
+    st.markdown(f"""
+    <div class="card">
+        <p class="small">Estimated Remaining Duration</p>
+        <div class="big-score">{remaining_current_duration:.1f} months</div>
+        <p class="small">Based on historical average duration of {current_phase}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with d3:
+    st.markdown(f"""
+    <div class="card">
+        <p class="small">Next Probable Phase</p>
+        <div class="phase">{next_probable_phase}</div>
+        <p class="small">Expected duration: {avg_next_duration:.1f} months</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # =====================================================
 # MARKET CYCLE WAVE
