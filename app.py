@@ -10,7 +10,9 @@ import plotly.graph_objects as go
 import yfinance as yf
 import joblib
 
+
 from datetime import datetime
+from protect import require_tool_access
 
 
 # =====================================================
@@ -20,6 +22,13 @@ st.set_page_config(
     page_title="Madness of Money Bees",
     page_icon="🐝",
     layout="wide"
+)
+# =====================================================
+# FINANCIFY ACCESS CONTROL
+# =====================================================
+require_tool_access(
+    tool_name="hive-cycle-predictor",
+    display_name="Madness of Money Bees"
 )
 
 
@@ -37,7 +46,7 @@ SURECART_CHECKOUT_URL = st.secrets.get(
 )
 
 TOOL_NAME = "Madness of Money Bees"
-TOOL_SLUG = "market-cycle-predictor"
+TOOL_SLUG = "hive-cycle-predictor"
 
 
 def _post(path: str, payload: dict, timeout: int = 120):
