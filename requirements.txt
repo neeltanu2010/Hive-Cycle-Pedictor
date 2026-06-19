@@ -2,7 +2,8 @@ streamlit
 pandas
 numpy
 plotly
-scikit-learn
-xgboost
 yfinance
 joblib
+scikit-learn
+xgboost
+requests
